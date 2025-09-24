@@ -1,14 +1,19 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
+﻿// This file is part of the Genova project licensed under the GNU General Public License v3.0.
+// See the LICENSE file in the project root for more information.
+
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
 using Genova.Common.Utilities;
 using Microsoft.ML;
 
 namespace Genova.PoliteUnsupervised;
 
+/// <summary>
+/// Provides classification of user input into <see cref="ToneLabel"/> values
+/// (Polite, Rude, or Neutral) using a pre-trained unsupervised ML.NET model
+/// embedded as a resource in this assembly.
+/// </summary>
+[SuppressMessage("Style", "IDE1006:Naming Styles", Justification = "Conflicting naming rules.")]
 public static class ToneClassifier
 {
     // Adjust to your actual resource names/namespaces:
@@ -18,37 +23,52 @@ public static class ToneClassifier
     private static readonly Assembly _assembly = typeof(ToneClassifier).Assembly;
     private static readonly string _embeddedResourceFolder = "Data/";
 
-    private static readonly Lazy<MLContext> _ml = new(() => new MLContext());
-    private static readonly Lazy<PredictionEngine<InputRow, KMeansOut>> _engine = new(LoadEngine);
-    private static readonly Lazy<ClusterMap> _map = new(LoadMap);
+    private static readonly Lazy<MLContext> _ml = new Lazy<MLContext>(() => new MLContext());
+    private static readonly Lazy<PredictionEngine<InputRow, KMeansOut>> _engine = new (LoadEngine);
+    private static readonly Lazy<ClusterMap> _map = new (LoadMap);
 
+    /// <summary>
+    /// Classifies the specified raw input text as polite, rude, or neutral using the
+    /// embedded model and cluster map.
+    /// </summary>
+    /// <param name="rawText">The user-provided input sentence to classify.</param>
+    /// <returns>
+    /// A <see cref="ClassificationResult"/> containing the final label, the assigned
+    /// cluster identifier, the distance to that cluster, the cluster threshold, and a
+    /// simple confidence score.
+    /// </returns>
     public static ClassificationResult Classify(string rawText)
     {
         if (string.IsNullOrWhiteSpace(rawText))
-            return new ClassificationResult(ToneLabel.Neutral, 0, 0, 0, 0);
-
-        var text = ProfanityHelper.Sanitize(rawText);
-        var pred = _engine.Value.Predict(new InputRow { Text = text });
-
-        var cluster = pred.PredictedLabel; // 1-based
-        var ownDist = pred.Distances[(int)cluster - 1];
-
-        var map = _map.Value;
-        var key = cluster.ToString();
-        if (!map.clusters.TryGetValue(key, out var info))
         {
-            // unknown cluster id → neutral
-            return new ClassificationResult(ToneLabel.Neutral, cluster, ownDist, 0, 0);
+            return new ClassificationResult(ToneLabel.Neutral, 0U, 0F, 0F, 0F);
         }
 
-        var label = ClusterMapLoader.ToTone(info.label);
-        var threshold = info.maxDistance;
+        string text = ProfanityHelper.Sanitize(rawText);
+        PredictionEngine<InputRow, KMeansOut> engine = _engine.Value;
+        KMeansOut pred = engine.Predict(new InputRow { Text = text });
 
-        // Thresholded decision → Neutral if too far from its centroid
-        if (threshold > 0 && ownDist > threshold)
+        uint cluster = pred.PredictedLabel; // 1-based
+        float ownDist = pred.Distances[(int)cluster - 1];
+
+        ClusterMap map = _map.Value;
+        string key = cluster.ToString();
+        if (!map.Clusters.TryGetValue(key, out ClusterInfo? info))
+        {
+            // Unknown cluster id → neutral
+            return new ClassificationResult(ToneLabel.Neutral, cluster, ownDist, 0F, 0F);
+        }
+
+        ToneLabel label = ClusterMapLoader.ToTone(info.Label);
+        float threshold = info.MaxDistance;
+
+        // Thresholded decision → Neutral if too far from its centroid.
+        if (threshold > 0F && ownDist > threshold)
+        {
             label = ToneLabel.Neutral;
+        }
 
-        var conf = threshold > 0 ? Math.Clamp(1f - ownDist / threshold, 0f, 1f) : 0f;
+        float conf = threshold > 0F ? Math.Clamp(1F - (ownDist / threshold), 0F, 1F) : 0F;
 
         return new ClassificationResult(label, cluster, ownDist, threshold, conf);
     }
@@ -61,15 +81,17 @@ public static class ToneClassifier
             throw new InvalidOperationException($"Embedded model not found: {resourceName}");
         }
 
-        using var stream = FileHelper.GetEmbeddedResourceStream(_assembly, resourceName)
+        using Stream stream = FileHelper.GetEmbeddedResourceStream(_assembly, resourceName)
             ?? throw new InvalidOperationException($"Embedded model not found: {ModelResourceName}");
-        var ml = _ml.Value;
 
-        // REGISTER the assembly that contains the CustomMapping factory
+        MLContext ml = _ml.Value;
+
+        // REGISTER the assembly that contains the CustomMapping factory.
         ml.ComponentCatalog.RegisterAssembly(_assembly);
 
-        var model = ml.Model.Load(stream, out _);
-        return ml.Model.CreatePredictionEngine<InputRow, KMeansOut>(model);
+        ITransformer model = ml.Model.Load(stream, out DataViewSchema _);
+        PredictionEngine<InputRow, KMeansOut> engine = ml.Model.CreatePredictionEngine<InputRow, KMeansOut>(model);
+        return engine;
     }
 
     private static ClusterMap LoadMap()
@@ -80,8 +102,10 @@ public static class ToneClassifier
             throw new InvalidOperationException($"Embedded model not found: {resourceName}");
         }
 
-        using var stream = FileHelper.GetEmbeddedResourceStream(_assembly, resourceName)
+        using Stream stream = FileHelper.GetEmbeddedResourceStream(_assembly, resourceName)
             ?? throw new InvalidOperationException($"Embedded model not found: {ModelResourceName}");
-        return ClusterMapLoader.Load(stream);
+
+        ClusterMap map = ClusterMapLoader.Load(stream);
+        return map;
     }
 }

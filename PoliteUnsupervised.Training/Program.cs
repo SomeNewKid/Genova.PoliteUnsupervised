@@ -1,39 +1,31 @@
-﻿using System.Diagnostics;
+﻿// This file is part of the Genova project licensed under the GNU General Public License v3.0.
+// See the LICENSE file in the project root for more information.
+
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.ML;
 using Microsoft.ML.Data;
 using Microsoft.ML.Trainers;
-using Microsoft.ML.Transforms;
 using Microsoft.ML.Transforms.Text;
 
 namespace Genova.PoliteUnsupervised.Training;
 
+/// <summary>
+/// Console entry point for training the unsupervised clustering model and emitting artifacts
+/// (model ZIP, schema JSON, and cluster-map JSON) to the configured output directory.
+/// </summary>
+[SuppressMessage("Style", "IDE1006:Naming Styles", Justification = "Conflicting naming styles")]
 internal class Program
 {
     private static string InputDir = "input";
     private static string OutputDir = "output";
 
-    // --- Tone lexicons / helpers for the custom mapping ---
-    private static readonly string[] PoliteStart = { "please", "could", "would", "might", "kindly" };
-    private static readonly string[] PolitePhrases = { "would you mind", "i would appreciate", "i request", "i ask" };
-    private static readonly string[] RudeInsults = { "idiot", "dolt", "clown", "fool" };
-    private static readonly string[] Intensifiers = { "now", "already", "immediately", "right", "instantly", "at", "once" };
-
-    private static readonly HashSet<string> ToneLex = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "please","could","would","might","kindly",
-        "don't","dont","stop","quit",
-        "now","already","immediately","at","once",
-        "idiot","dolt","clown","fool",
-        "profanity" // normalized marker
-        // Note: we no longer keep "!" or "?" here; punctuation is handled in PunctFeatures
-    };
-
-    // Dial punctuation influence: 0.0 = ignore; 0.05–0.20 = mild nudge
-    private const float PUNCT_WEIGHT = 0.10f;
-
+    /// <summary>
+    /// Application entry point. Loads configuration, locates the dataset, and invokes training.
+    /// </summary>
+    /// <param name="args">Command-line arguments (unused).</param>
+    /// <returns>Zero on success; non-zero on failure.</returns>
     private static int Main(string[] args)
     {
         IConfigurationRoot configuration = new ConfigurationBuilder()
@@ -41,10 +33,10 @@ internal class Program
             .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
             .Build();
 
-        InputDir = configuration["InputDirectory"] ?? "";
-        OutputDir = configuration["OutputDirectory"] ?? "";
+        InputDir = configuration["InputDirectory"] ?? string.Empty;
+        OutputDir = configuration["OutputDirectory"] ?? string.Empty;
 
-        var datasetPath = Path.Combine(InputDir, "polite-rude-dataset.txt");
+        string datasetPath = Path.Combine(InputDir, "polite-rude-dataset.txt");
         if (!File.Exists(datasetPath))
         {
             Console.Error.WriteLine($"Dataset not found: {datasetPath}");
@@ -59,13 +51,18 @@ internal class Program
         return 0;
     }
 
+    /// <summary>
+    /// Trains the ML.NET pipeline on the specified dataset and writes model and diagnostics to disk.
+    /// </summary>
+    /// <param name="datasetPath">The full path to the training dataset (one sentence per line).</param>
+    /// <param name="k">The number of clusters to learn.</param>
     private static void TrainAndSave(string datasetPath, int k)
     {
-        var ml = new MLContext(seed: 42);
+        MLContext ml = new MLContext(seed: 42);
 
         // Load: one sentence per line; ignore empty/whitespace lines.
         IEnumerable<InputRow> lines = File.ReadLines(datasetPath)
-                        .Select(l => l?.Trim() ?? "")
+                        .Select(l => l?.Trim() ?? string.Empty)
                         .Where(l => !string.IsNullOrWhiteSpace(l))
                         .Select(l => new InputRow { Text = l });
 
@@ -73,81 +70,35 @@ internal class Program
 
         IDataView data = ml.Data.LoadFromEnumerable(lines);
 
-        // -------------------------
-        // Custom mapping: InputRow -> ToneOut (tone heuristics)
-        // -------------------------
-        Action<InputRow, ToneOut> map = (src, dst) =>
-        {
-            var s = src.Text ?? "";
-            var lower = s.ToLowerInvariant();
+        // Tone mapping (contract implemented in shared library).
+        IEstimator<ITransformer> toneMap = ml.Transforms.CustomMapping<InputRow, ToneOut>(
+            ToneLexMapping.Map,
+            ToneLexMapping.ContractName);
 
-            bool Has(string term) => lower.Contains(term, StringComparison.Ordinal);
+        // Punctuation features (contract implemented in shared library).
+        IEstimator<ITransformer> punctMap = ml.Transforms.CustomMapping<InputRow, PunctuationFeatures>(
+            PunctuationFeaturizerMapping.Map,
+            PunctuationFeaturizerMapping.ContractName);
 
-            dst.HasPlease = Has("please") ? 1 : 0;
-            dst.HasCould = lower.StartsWith("could ") || Has(" could ") ? 1 : 0;
-            dst.HasWould = lower.StartsWith("would ") || Has(" would ") ? 1 : 0;
-            dst.HasKindly = Has("kindly") ? 1 : 0;
-            dst.HasReqPhrase = (Has("would you mind") || Has("i would appreciate") || Has("i request") || Has("i ask")) ? 1 : 0;
-
-            dst.HasDontOrStop = (Has("don't") || Has("dont") || lower.StartsWith("stop ") || Has(" stop ") || lower.StartsWith("quit ") || Has(" quit ")) ? 1 : 0;
-            dst.HasInsult = RudeInsults.Any(t => ContainsWholeWord(lower, t)) ? 1f : 0f;
-            dst.HasIntensifier = Intensifiers.Any(t => ContainsWholeWord(lower, t)
-                                                    || (t == "at" && lower.Contains(" at once ")))
-                                                    ? 1f : 0f;
-            dst.HasProfanity = Has("profanity") ? 1 : 0;
-
-            // Keep binary flags for punctuation in tone dense features (low impact once normalized)
-            dst.HasExclaim = lower.Contains('!') ? 1 : 0;
-            dst.HasQuestion = lower.Contains('?') ? 1 : 0;
-
-            var trimmed = lower.Trim();
-            dst.StartsWithPolite = PoliteStart.Any(p => trimmed.StartsWith(p + " ")) ? 1 : 0;
-            dst.EndsWithPlease = trimmed.EndsWith(" please") ? 1 : 0;
-
-            var tokens = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            dst.TokenCount = tokens.Length;
-
-            // Build ToneText from a small tone lexicon ONLY (no punctuation kept here)
-            var kept = new List<string>(tokens.Length);
-            foreach (var t in tokens)
-            {
-                var bare = t.Trim('\"', '\'', '“', '”', '‘', '’', '.', ',', ';', ';', ':', '!', '?', '(', ')', '[', ']', '{', '}');
-                if (ToneLex.Contains(bare))
-                    kept.Add(bare);
-            }
-            dst.ToneText = string.Join(' ', kept);
-        };
-        // Tone mapping
-        var toneMap = ml.Transforms.CustomMapping<InputRow, ToneOut>(
-            Genova.PoliteUnsupervised.ToneLexMapping.Map,
-            Genova.PoliteUnsupervised.ToneLexMapping.ContractName);
-
-        // Punctuation features
-        var punctMap = ml.Transforms.CustomMapping<InputRow, Genova.PoliteUnsupervised.PunctFeatures>(
-            Genova.PoliteUnsupervised.PunctuationFeaturizerMapping.Map,
-            Genova.PoliteUnsupervised.PunctuationFeaturizerMapping.ContractName);
-
-        // Scale punctuation
-        var scalePunct = ml.Transforms.CustomMapping<Genova.PoliteUnsupervised.PunctFeatures, Genova.PoliteUnsupervised.PunctFeatures>(
-            Genova.PoliteUnsupervised.ScalePunctMapping.Map,
-            Genova.PoliteUnsupervised.ScalePunctMapping.ContractName)
+        // Scale punctuation (contract implemented in shared library) and vectorize.
+        IEstimator<ITransformer> scalePunct = ml.Transforms.CustomMapping<PunctuationFeatures, PunctuationFeatures>(
+                ScalePunctuationMapping.Map,
+                ScalePunctuationMapping.ContractName)
             .Append(ml.Transforms.Concatenate(
                 "PunctVec",
-                nameof(Genova.PoliteUnsupervised.PunctFeatures.ExclCount),
-                nameof(Genova.PoliteUnsupervised.PunctFeatures.QuesCount),
-                nameof(Genova.PoliteUnsupervised.PunctFeatures.Interrobang),
-                nameof(Genova.PoliteUnsupervised.PunctFeatures.MultiExcl),
-                nameof(Genova.PoliteUnsupervised.PunctFeatures.MultiQ),
-                nameof(Genova.PoliteUnsupervised.PunctFeatures.TerminalExcl),
-                nameof(Genova.PoliteUnsupervised.PunctFeatures.TerminalQues),
-                nameof(Genova.PoliteUnsupervised.PunctFeatures.ExclPerChar),
-                nameof(Genova.PoliteUnsupervised.PunctFeatures.QuesPerChar)));
+                nameof(PunctuationFeatures.ExclCount),
+                nameof(PunctuationFeatures.QuesCount),
+                nameof(PunctuationFeatures.Interrobang),
+                nameof(PunctuationFeatures.MultiExcl),
+                nameof(PunctuationFeatures.MultiQ),
+                nameof(PunctuationFeatures.TerminalExcl),
+                nameof(PunctuationFeatures.TerminalQues),
+                nameof(PunctuationFeatures.ExclPerChar),
+                nameof(PunctuationFeatures.QuesPerChar)));
 
-        // -------------------------
         // Tone-text featurization (small, focused vocab)
         // IMPORTANT: Drop punctuation and disable char n-grams to avoid punctuation leakage
-        // -------------------------
-        var toneTextOpts = new TextFeaturizingEstimator.Options
+        TextFeaturizingEstimator.Options toneTextOpts = new TextFeaturizingEstimator.Options
         {
             CaseMode = TextNormalizingEstimator.CaseMode.Lower,
             KeepDiacritics = true,
@@ -163,15 +114,13 @@ internal class Program
             CharFeatureExtractor = null // <— disable char n-grams
         };
 
-        var toneTextFeats = ml.Transforms.Text.FeaturizeText(
+        IEstimator<ITransformer> toneTextFeats = ml.Transforms.Text.FeaturizeText(
             outputColumnName: "ToneTextFeats",
             options: toneTextOpts,
             nameof(ToneOut.ToneText));
 
-        // -------------------------
         // Dense tone features (booleans + counts), normalized
-        // -------------------------
-        var toneDenseCols = new[]
+        string[] toneDenseCols = new[]
         {
             nameof(ToneOut.HasPlease), nameof(ToneOut.HasCould), nameof(ToneOut.HasWould),
             nameof(ToneOut.HasKindly), nameof(ToneOut.HasReqPhrase),
@@ -182,24 +131,23 @@ internal class Program
             nameof(ToneOut.TokenCount)
         };
 
-        var toneDense =
+        IEstimator<ITransformer> toneDense =
             ml.Transforms.Concatenate("ToneDense", toneDenseCols)
               .Append(ml.Transforms.NormalizeMinMax("ToneDense"));
 
-        // -------------------------
         // Final Features = [ToneTextFeats ; ToneDense ; PunctVec]
-        // -------------------------
-        var features = ml.Transforms.Concatenate("Features", "ToneTextFeats", "ToneDense", "PunctVec");
+        IEstimator<ITransformer> features =
+            ml.Transforms.Concatenate("Features", "ToneTextFeats", "ToneDense", "PunctVec");
 
-        var kmeansOpts = new KMeansTrainer.Options
+        KMeansTrainer.Options kmeansOpts = new ()
         {
             FeatureColumnName = "Features",
             NumberOfClusters = k,
-            MaximumNumberOfIterations = 200,
+            MaximumNumberOfIterations = 200
             // InitializationAlgorithm = KMeansTrainer.InitializationAlgorithm.KMeansPlusPlus
         };
 
-        var pipeline = toneMap
+        IEstimator<ITransformer> pipeline = toneMap
             .Append(punctMap)
             .Append(scalePunct)
             .Append(toneTextFeats)
@@ -208,17 +156,17 @@ internal class Program
             .Append(ml.Clustering.Trainers.KMeans(kmeansOpts));
 
         Console.WriteLine("Fitting model...");
-        var model = pipeline.Fit(data);
+        ITransformer model = pipeline.Fit(data);
 
         // Transform and preview
         IDataView preview = model.Transform(data);
-        var few = ml.Data.CreateEnumerable<KMeansOut>(preview, reuseRowObject: false)
+        List<KMeansOut> few = ml.Data.CreateEnumerable<KMeansOut>(preview, reuseRowObject: false)
                          .Take(5)
                          .ToList();
 
-        foreach (var r in few)
+        foreach (KMeansOut r in few)
         {
-            var distances = string.Join(",", r.Distances.Select(d => d.ToString("0.###")));
+            string distances = string.Join(",", r.Distances.Select(d => d.ToString("0.###")));
             Console.WriteLine($"Cluster={r.PredictedLabel}  Distances=[{distances}]");
         }
 
@@ -233,46 +181,59 @@ internal class Program
         Console.WriteLine($"Saved schema summary: {schemaPath}");
 
         // Inspect cluster distribution + WCSS and nearest examples per cluster
-        var scored = ml.Data.CreateEnumerable<ScoredRow>(preview, reuseRowObject: false).ToList();
+        List<ScoredRow> scored = ml.Data.CreateEnumerable<ScoredRow>(preview, reuseRowObject: false).ToList();
 
-        var byClusterSummary = scored.GroupBy(r => r.PredictedLabel)
-                              .OrderBy(g => g.Key)
-                              .Select(g => (Cluster: g.Key, Count: g.Count(),
-                                           Nearest: g.OrderBy(r => r.Distances[(int)g.Key - 1]).Take(3).ToList()));
-        foreach (var g in byClusterSummary)
+        IEnumerable<(uint Cluster, int Count, List<ScoredRow> Nearest)> byClusterSummary =
+            scored.GroupBy(r => r.PredictedLabel)
+                  .OrderBy(g => g.Key)
+                  .Select(g => (Cluster: g.Key, Count: g.Count(),
+                                Nearest: g.OrderBy(r => r.Distances[(int)g.Key - 1]).Take(3).ToList()));
+
+        foreach ((uint Cluster, int Count, List<ScoredRow> Nearest) g in byClusterSummary)
         {
             Console.WriteLine($"Cluster {g.Cluster}  Count={g.Count}");
-            foreach (var r in g.Nearest)
+            foreach (ScoredRow r in g.Nearest)
+            {
                 Console.WriteLine($"  d={r.Distances[(int)g.Cluster - 1]:0.###}  \"{r.Text}\"");
+            }
         }
 
-        double wcss = scored.Sum(r => {
-            var d = r.Distances[(int)r.PredictedLabel - 1];
+        double wcss = scored.Sum(r =>
+        {
+            float d = r.Distances[(int)r.PredictedLabel - 1];
             return d * d;
         });
         Console.WriteLine($"WCSS (k={k}): {wcss:0.###}");
 
-        var byCluster = scored.GroupBy(r => r.PredictedLabel).OrderBy(g => g.Key);
+        IEnumerable<IGrouping<uint, ScoredRow>> byCluster = scored.GroupBy(r => r.PredictedLabel).OrderBy(g => g.Key);
 
+        // Note: anonymous type → 'var' is required by the language
         var mapJson = new
         {
             k,
             clusters = byCluster.ToDictionary(
-            g => g.Key.ToString(),
-            g => new {
-                label = (g.Key is 1 or 4) ? "polite" : "rude", // heuristic; adjust after inspection
-                maxDistance = Percentile(g.Select(r => r.Distances[(int)g.Key - 1]), 0.90f)
-            })
+                g => g.Key.ToString(),
+                g => new
+                {
+                    label = (g.Key is 1 or 4) ? "polite" : "rude", // heuristic; adjust after inspection
+                    maxDistance = Percentile(g.Select(r => r.Distances[(int)g.Key - 1]), 0.90f)
+                })
         };
 
         File.WriteAllText(
-          Path.Combine(OutputDir, $"polite-rude-k{k}-cluster_map.json"),
-          JsonSerializer.Serialize(mapJson, new JsonSerializerOptions { WriteIndented = true })
+            Path.Combine(OutputDir, $"polite-rude-k{k}-cluster_map.json"),
+            JsonSerializer.Serialize(mapJson, new JsonSerializerOptions { WriteIndented = true })
         );
     }
 
+    /// <summary>
+    /// Writes a compact JSON summary of the data schema to the specified path.
+    /// </summary>
+    /// <param name="schema">The schema to summarize.</param>
+    /// <param name="path">The output file path.</param>
     private static void SaveSchemaSummary(DataViewSchema schema, string path)
     {
+        // Anonymous objects are used here; 'var' is required
         var cols = schema.Select(col => new
         {
             col.Name,
@@ -280,7 +241,7 @@ internal class Program
             IsVector = col.Type is VectorDataViewType
         });
 
-        var json = JsonSerializer.Serialize(cols, new JsonSerializerOptions
+        string json = JsonSerializer.Serialize(cols, new JsonSerializerOptions
         {
             WriteIndented = true
         });
@@ -288,20 +249,21 @@ internal class Program
         File.WriteAllText(path, json);
     }
 
+    /// <summary>
+    /// Computes the p-th percentile of a sequence of single-precision values.
+    /// </summary>
+    /// <param name="xs">The sequence of values.</param>
+    /// <param name="p">The percentile in the range [0,1].</param>
+    /// <returns>The percentile value.</returns>
     private static double Percentile(IEnumerable<float> xs, float p)
     {
-        var arr = xs.OrderBy(v => v).ToArray();
-        if (arr.Length == 0) return 0;
-        var idx = (int)Math.Floor((arr.Length - 1) * p);
-        return arr[idx];
-    }
+        float[] arr = xs.OrderBy(v => v).ToArray();
+        if (arr.Length == 0)
+        {
+            return 0;
+        }
 
-    private static bool ContainsWholeWord(string src, string term)
-    {
-        // quick boundary check without regex
-        return src.Equals(term, StringComparison.Ordinal)
-            || src.StartsWith(term + " ", StringComparison.Ordinal)
-            || src.EndsWith(" " + term, StringComparison.Ordinal)
-            || src.Contains(" " + term + " ", StringComparison.Ordinal);
+        int idx = (int)Math.Floor((arr.Length - 1) * p);
+        return arr[idx];
     }
 }

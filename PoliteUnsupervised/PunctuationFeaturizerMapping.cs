@@ -1,22 +1,43 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿// This file is part of the Genova project licensed under the GNU General Public License v3.0.
+// See the LICENSE file in the project root for more information.
+
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 
 namespace Genova.PoliteUnsupervised;
 
+/// <summary>
+/// Provides a custom mapping that derives punctuation-based features from an input sentence.
+/// </summary>
 public static class PunctuationFeaturizerMapping
 {
+    /// <summary>
+    /// The contract name used to bind this custom mapping when saving and loading ML.NET models.
+    /// </summary>
     public const string ContractName = "PunctuationFeaturizer";
-    public static void Map(InputRow src, PunctFeatures dst)
+
+    /// <summary>
+    /// Populates <see cref="PunctuationFeatures"/> by analyzing punctuation patterns within the source text.
+    /// </summary>
+    /// <param name="src">The source row containing the input text.</param>
+    /// <param name="dst">The destination structure to receive computed punctuation features.</param>
+    public static void Map(InputRow src, PunctuationFeatures dst)
     {
-        var s = (src.Text ?? string.Empty).Trim();
+        string s = (src.Text ?? string.Empty).Trim();
         int len = s.Length == 0 ? 1 : s.Length;
 
-        int excl = 0, ques = 0;
-        foreach (char c in s) { if (c == '!') excl++; else if (c == '?') ques++; }
+        int excl = 0;
+        int ques = 0;
+        foreach (char c in s)
+        {
+            if (c == '!')
+            {
+                excl++;
+            }
+            else if (c == '?')
+            {
+                ques++;
+            }
+        }
 
         dst.ExclCount = excl;
         dst.QuesCount = ques;
