@@ -1,0 +1,37 @@
+{
+  "k": 8,
+  "clusters": {
+    "1": {
+      "label": "polite",
+      "maxDistance": 1.50832200050354
+    },
+    "2": {
+      "label": "neutral",
+      "maxDistance": 1.898908019065857
+    },
+    "3": {
+      "label": "neutral",
+      "maxDistance": 1.8933990001678467
+    },
+    "4": {
+      "label": "rude",
+      "maxDistance": 0.529618501663208
+    },
+    "5": {
+      "label": "rude",
+      "maxDistance": 1.5229713916778564
+    },
+    "6": {
+      "label": "polite",
+      "maxDistance": 1.5266211032867432
+    },
+    "7": {
+      "label": "rude",
+      "maxDistance": 0.962600827217102
+    },
+    "8": {
+      "label": "rude",
+      "maxDistance": 1.2251605987548828
+    }
+  }
+}
