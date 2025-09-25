@@ -7,7 +7,7 @@ namespace Genova.PoliteUnsupervised;
 /// Provides the tone-lexicon custom mapping used during training to project raw text
 /// into tone-oriented features and a compact tone-token text column.
 /// </summary>
-public static class ToneLexMapping
+internal static class ToneLexMapping
 {
     /// <summary>
     /// The contract name used to bind this custom mapping when saving and loading ML.NET models.

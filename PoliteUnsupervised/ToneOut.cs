@@ -7,7 +7,7 @@ namespace Genova.PoliteUnsupervised;
 /// Represents derived tone features for an input sentence used by the training pipeline,
 /// together with a compact token string that contains only tone markers and punctuation.
 /// </summary>
-public sealed class ToneOut
+internal sealed class ToneOut
 {
     /// <summary>
     /// Gets or sets the tone-only token sequence (e.g., markers like <c>please</c>, <c>PROFANITY</c>, <c>!</c>, <c>?</c>)

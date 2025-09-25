@@ -7,7 +7,7 @@ namespace Genova.PoliteUnsupervised;
 /// Represents the cluster-map metadata persisted alongside the trained model,
 /// including the number of clusters and per-cluster information.
 /// </summary>
-public sealed class ClusterMap
+internal sealed class ClusterMap
 {
     /// <summary>
     /// Gets or sets the number of clusters (<c>k</c>) used during training.

@@ -1,6 +1,8 @@
 ﻿// This file is part of the Genova project licensed under the GNU General Public License v3.0.
 // See the LICENSE file in the project root for more information.
 
+using Genova.Common.Attributes;
+
 namespace Genova.PoliteUnsupervised;
 
 /// <summary>
@@ -25,6 +27,7 @@ namespace Genova.PoliteUnsupervised;
 /// A simple confidence score derived from the distance and threshold,
 /// computed as <c>1 - clamp(Distance / Threshold, 0..1)</c>. If no threshold is available, this value is 0.
 /// </param>
+[CodeQuality(Public = true, Justification = "Intended for use by the Rusty Kane website.")]
 public sealed record ClassificationResult(
     ToneLabel label,
     uint clusterId,

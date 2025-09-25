@@ -9,7 +9,7 @@ namespace Genova.PoliteUnsupervised;
 /// Represents the prediction output of the K-Means clustering model,
 /// including the assigned cluster identifier and the per-cluster distance vector.
 /// </summary>
-public sealed class KMeansOut
+internal sealed class KMeansOut
 {
     /// <summary>
     /// Gets or sets the 1-based identifier of the nearest cluster predicted by the model.

@@ -9,7 +9,7 @@ namespace Genova.PoliteUnsupervised.Training;
 /// Represents a transformed row containing the original text, the predicted cluster,
 /// and the per-cluster distance vector produced by the K-Means model.
 /// </summary>
-public sealed class ScoredRow
+internal sealed class ScoredRow
 {
     /// <summary>
     /// Gets or sets the original input sentence text.

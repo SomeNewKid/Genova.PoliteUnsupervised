@@ -6,7 +6,7 @@ namespace Genova.PoliteUnsupervised;
 /// <summary>
 /// Describes a single cluster's post-hoc metadata used by the runtime classifier.
 /// </summary>
-public sealed class ClusterInfo
+internal sealed class ClusterInfo
 {
     /// <summary>
     /// Gets or sets the human-interpretable label assigned to this cluster.

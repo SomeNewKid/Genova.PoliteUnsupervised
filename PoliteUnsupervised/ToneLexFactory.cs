@@ -10,7 +10,7 @@ namespace Genova.PoliteUnsupervised;
 /// delegate used by the ML.NET <see cref="CustomMappingFactory{TSrc,TDst}"/> transform.
 /// </summary>
 [CustomMappingFactoryAttribute(ToneLexMapping.ContractName)]
-public sealed class ToneLexFactory : CustomMappingFactory<InputRow, ToneOut>
+internal sealed class ToneLexFactory : CustomMappingFactory<InputRow, ToneOut>
 {
     /// <summary>
     /// Gets the mapping delegate for the <c>ToneLex</c> contract.

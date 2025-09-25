@@ -3,6 +3,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
+using Genova.Common.Attributes;
 using Genova.Common.Utilities;
 using Microsoft.ML;
 
@@ -13,6 +14,7 @@ namespace Genova.PoliteUnsupervised;
 /// (Polite, Rude, or Neutral) using a pre-trained unsupervised ML.NET model
 /// embedded as a resource in this assembly.
 /// </summary>
+[CodeQuality(Public = true, Justification = "Intended for use by the Rusty Kane website.")]
 [SuppressMessage("Style", "IDE1006:Naming Styles", Justification = "Conflicting naming rules.")]
 public static class ToneClassifier
 {

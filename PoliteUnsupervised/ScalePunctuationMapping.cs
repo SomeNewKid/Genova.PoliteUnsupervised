@@ -6,7 +6,7 @@ namespace Genova.PoliteUnsupervised;
 /// <summary>
 /// Provides a custom mapping that scales punctuation-derived features by a constant weight.
 /// </summary>
-public static class ScalePunctuationMapping
+internal static class ScalePunctuationMapping
 {
     /// <summary>
     /// The contract name used to bind this custom mapping when saving and loading ML.NET models.

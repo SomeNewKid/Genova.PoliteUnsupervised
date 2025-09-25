@@ -8,7 +8,7 @@ namespace Genova.PoliteUnsupervised;
 /// <summary>
 /// Provides a custom mapping that derives punctuation-based features from an input sentence.
 /// </summary>
-public static class PunctuationFeaturizerMapping
+internal static class PunctuationFeaturizerMapping
 {
     /// <summary>
     /// The contract name used to bind this custom mapping when saving and loading ML.NET models.

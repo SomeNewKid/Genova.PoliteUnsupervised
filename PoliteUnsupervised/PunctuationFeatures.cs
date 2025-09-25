@@ -7,7 +7,7 @@ namespace Genova.PoliteUnsupervised;
 /// Represents derived punctuation features for an input sentence,
 /// used as part of tone-oriented clustering.
 /// </summary>
-public class PunctuationFeatures
+internal sealed class PunctuationFeatures
 {
     /// <summary>
     /// Gets or sets the total count of exclamation marks (<c>'!'</c>) in the sentence.

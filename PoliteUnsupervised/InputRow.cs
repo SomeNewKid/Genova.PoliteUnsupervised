@@ -8,7 +8,7 @@ namespace Genova.PoliteUnsupervised;
 /// <summary>
 /// Represents a single input row containing the raw text to be featurized and clustered.
 /// </summary>
-public sealed class InputRow
+internal sealed class InputRow
 {
     /// <summary>
     /// Gets or sets the raw input text for this row.

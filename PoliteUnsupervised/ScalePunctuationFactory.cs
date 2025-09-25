@@ -11,7 +11,7 @@ namespace Genova.PoliteUnsupervised;
 /// <see cref="CustomMappingFactory{TSrc,TDst}"/> transform.
 /// </summary>
 [CustomMappingFactoryAttribute(ScalePunctuationMapping.ContractName)]
-public sealed class ScalePunctuationFactory : CustomMappingFactory<PunctuationFeatures, PunctuationFeatures>
+internal sealed class ScalePunctuationFactory : CustomMappingFactory<PunctuationFeatures, PunctuationFeatures>
 {
     /// <summary>
     /// Gets the mapping delegate for the <c>ScalePunctuation</c> contract.
