@@ -28,13 +28,15 @@ internal class Program
     /// <returns>Zero on success; non-zero on failure.</returns>
     private static int Main(string[] args)
     {
+        string solutionFolder = FindSolutionFolder();
+
         IConfigurationRoot configuration = new ConfigurationBuilder()
-            .SetBasePath(Directory.GetCurrentDirectory())
+            .SetBasePath(AppContext.BaseDirectory)
             .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
             .Build();
 
-        InputDir = configuration["InputDirectory"] ?? string.Empty;
-        OutputDir = configuration["OutputDirectory"] ?? string.Empty;
+        InputDir = ResolvePath(configuration["InputDirectory"] ?? string.Empty, solutionFolder);
+        OutputDir = ResolvePath(configuration["OutputDirectory"] ?? string.Empty, solutionFolder);
 
         string datasetPath = Path.Combine(InputDir, "polite-rude-dataset.txt");
         if (!File.Exists(datasetPath))
@@ -49,6 +51,35 @@ internal class Program
 
         TrainAndSave(datasetPath, k);
         return 0;
+    }
+
+    private static string ResolvePath(string path, string baseDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(path) || Path.IsPathRooted(path))
+        {
+            return path;
+        }
+
+        return Path.GetFullPath(Path.Combine(baseDirectory, path));
+    }
+
+    private static string FindSolutionFolder()
+    {
+        const string solutionFileName = "Genova.PoliteUnsupervised.sln";
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+
+        while (directory != null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, solutionFileName)))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new InvalidOperationException(
+            $"Solution folder containing '{solutionFileName}' could not be found.");
     }
 
     /// <summary>

@@ -2,6 +2,12 @@
 
 An ML.NET-based .NET 8 solution for training and running an unsupervised classifier that labels input text as polite, rude, or neutral.
 
+> [!WARNING]
+> This is an experimental project and should not be considered production-ready. It exists to explore a small AI, ML, agent, or demo idea within the broader Genova ecosystem.
+
+> [!IMPORTANT]
+> A fresh public clone of this repository should not be expected to restore or build without additional Genova infrastructure. Many Genova dependencies are distributed through a private authenticated NuGet feed, and the public source does not include feed credentials or a complete public package graph.
+
 ## Installation
 
 ```bash
@@ -44,6 +50,10 @@ dotnet run --project PoliteUnsupervised.Training
 * ML.NET
 * The included `polite-rude-dataset.txt` dataset
 
+## Third-Party Notices
+
+This project has direct runtime dependencies on third-party NuGet packages, including `Microsoft.Extensions.*` packages (MIT), `Microsoft.ML*` packages (MIT). See each package's NuGet license metadata for full license and notice terms.
+
 ## License
 
-GNU General Public License v3.0
+GNU General Public License v3.0. See the `LICENSE` file for details.

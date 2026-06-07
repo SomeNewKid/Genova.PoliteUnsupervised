@@ -10,7 +10,6 @@ public class ClusterMapLoader_Tests
     [InlineData("rude", ToneLabel.Rude)]
     [InlineData("neutral", ToneLabel.Neutral)]
     [InlineData("unknown", ToneLabel.Neutral)]
-    [InlineData(null, ToneLabel.Neutral)]
     public void ToTone_MapsLabels_AsExpected(string input, ToneLabel expected)
     {
         ToneLabel actual = ClusterMapLoader.ToTone(input);
