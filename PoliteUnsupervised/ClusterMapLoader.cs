@@ -41,6 +41,6 @@ internal static class ClusterMapLoader
     {
         "polite" => ToneLabel.Polite,
         "rude" => ToneLabel.Rude,
-        _ => ToneLabel.Neutral
+        _ => ToneLabel.Neutral,
     };
 }

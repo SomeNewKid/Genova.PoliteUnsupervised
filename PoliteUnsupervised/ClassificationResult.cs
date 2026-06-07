@@ -28,9 +28,11 @@ namespace Genova.PoliteUnsupervised;
 /// computed as <c>1 - clamp(Distance / Threshold, 0..1)</c>. If no threshold is available, this value is 0.
 /// </param>
 [CodeQuality(Public = true, Justification = "Intended for use by the Rusty Kane website.")]
+#pragma warning disable SA1300 // Preserve existing public record property names.
 public sealed record ClassificationResult(
     ToneLabel label,
     uint clusterId,
     float distance,
     float threshold,
     float confidence);
+#pragma warning restore SA1300
